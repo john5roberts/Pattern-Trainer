@@ -42,7 +42,13 @@ button, select {font:inherit;touch-action:manipulation;cursor:pointer;-webkit-ta
   background-size:4px 4px,4px 4px;background-repeat:no-repeat;
 }
 #keySel option {background:#101722;color:#fff}
-.practice-tab {height:70px;flex:0 0 70px;display:flex;justify-content:center;align-items:center;padding:5px;line-height:1.17;font-weight:700;font-size:13px;text-align:center;}
+/* Mode tabs use only enough height for their text. */
+.practice-tab {min-height:34px;height:auto;flex:0 0 auto;display:flex;justify-content:center;align-items:center;padding:8px 4px;line-height:1.17;font-weight:700;font-size:13px;text-align:center;}
+/* Compact two-way notation toggle, above the exercise buttons. */
+.notation-toggle {width:92px;display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:3px;border:1px solid var(--border);background:#0b1421;border-radius:12px;}
+.notation-option {min-width:0;padding:8px 1px;border:0;border-radius:8px;background:transparent;color:#bccbdc;font-size:10px;font-weight:700;line-height:1.1;letter-spacing:-.2px;}
+.notation-option[aria-pressed="true"] {background:#304661;color:#fff;box-shadow:inset 0 0 0 1px #70b2ff77;}
+
 .practice-tab[aria-pressed="true"] {background:linear-gradient(180deg,#304661,#1c304b);border-color:#70b2ff;box-shadow:inset 0 0 0 1px #70b2ff66,0 0 13px #4aa3ff33,0 10px 24px #0006;}
 button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-offset:3px}
 .wrap {padding:8px;background:linear-gradient(180deg,rgba(18,26,38,.7),rgba(8,12,19,.72));border:1px solid #d2e2ff22;border-radius:18px;box-shadow:0 14px 35px #0007}
@@ -88,9 +94,10 @@ button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-off
 @media (max-width:350px) {
   .app {padding:9px 6px 9px}
   .layout {gap:7px}
-  .leftcol,.keypanel,.practice-tab,.answers {width:85px}
+  .leftcol,.keypanel,.practice-tab,.answers,.notation-toggle {width:85px}
   .wrap {padding:6px}
   .practice-tab {font-size:12px}
+  .notation-option {font-size:9px}
   .answer {height:46px}
 }
 @media (prefers-reduced-motion:reduce) {.gdot.flash {animation:none;background:#e8ffec;border-color:white;box-shadow:0 0 0 4px #c5ffd266}}
@@ -102,10 +109,14 @@ button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-off
   <div class="layout">
     <nav class="leftcol" aria-label="Key and exercises">
       <div class="keypanel"><select id="keySel" aria-label="Major key"></select></div>
+      <div class="notation-toggle" role="group" aria-label="Label notation">
+        <button type="button" class="notation-option" data-notation="intervals" aria-pressed="true">Intervals</button>
+        <button type="button" class="notation-option" data-notation="notes" aria-pressed="false">Notes</button>
+      </div>
       <button class="practice-tab" data-practice="adjacent" aria-pressed="true">Adjacent</button>
       <button class="practice-tab" data-practice="step" aria-pressed="false">Step Stack</button>
       <button class="practice-tab" data-practice="jump" aria-pressed="false">Jump Stack</button>
-      <button class="practice-tab" data-practice="xstart" aria-pressed="false">X-start</button>
+      <button class="practice-tab" id="xstartButton" data-practice="xstart" aria-pressed="false">X-start</button>
       <div class="answers" id="answers" aria-label="Select the interval"></div>
     </nav>
     <div class="wrap">
@@ -144,12 +155,34 @@ button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-off
   const mod=(v,n=12)=>((v%n)+n)%n;
   const rand=n=>Math.floor(Math.random()*n);
   const board=$('board'), openrow=$('openrow'), selector=$('keySel'), answerPanel=$('answers');
-  let keyPc=0, practice='adjacent', config=null, pattern=[], dots=[], flashIndex=-1, anchorIndex=-1;
+  let keyPc=0, practice='adjacent', notation='intervals', config=null, pattern=[], dots=[], flashIndex=-1, anchorIndex=-1;
   let introTimers=[], revealTimers=new Map(), holdTimer=null, locked=true, generation=0;
   let audioCtx=null, lastBox=null;
 
   function midiFor(n){return OPEN_MIDI[n.s]+n.f;}
   function degreeAt(s,f){return PC_TO_DEG[mod(OPEN_MIDI[s]+f-keyPc)]||null;}
+  function labelForDegree(degree){
+    return notation==='notes' ? SH[mod(keyPc+OFF[degree])] : String(degree);
+  }
+  function updateXStartButton(){
+    const btn=$('xstartButton');
+    if(practice!=='xstart'||!config||!config.box){btn.textContent='X-start';return;}
+    const degree=BOX_DEGREE[config.box];
+    btn.textContent=labelForDegree(degree)+'-start';
+  }
+  function updateNotationLabels(){
+    dots.forEach((dot,i)=>{
+      if(dot.classList.contains('anchor')||dot.classList.contains('reveal')){
+        dot.textContent=labelForDegree(pattern[i].degree);
+      }
+    });
+    answerPanel.querySelectorAll('.answer').forEach(btn=>{
+      const d=Number(btn.dataset.degree);
+      btn.textContent=labelForDegree(d);
+      btn.setAttribute('aria-label', (notation==='notes' ? 'Note ' : 'Interval ')+labelForDegree(d));
+    });
+    updateXStartButton();
+  }
   function ensureAudio(){
     try{
       const AC=window.AudioContext||window.webkitAudioContext;
@@ -340,7 +373,7 @@ button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-off
     const next=neighbors[rand(neighbors.length)];
     dots.forEach((dot,i)=>{
       dot.classList.toggle('anchor',i===anchorIndex);
-      if(!ex.has(i))dot.textContent=i===anchorIndex?String(pattern[i].degree):'';
+      if(!ex.has(i))dot.textContent=i===anchorIndex?labelForDegree(pattern[i].degree):'';
     });
     setFlash(next);return true;
   }
@@ -376,6 +409,7 @@ button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-off
     const audioReady=ensureAudio();
     if(newConfig)config=nextConfig(practice);
     pattern=buildPattern();
+    updateXStartButton();
     updateDots();
     // A browser may need the user's first tap to activate Web Audio.
     // When resuming, start the playback only after the context is ready,
@@ -411,7 +445,7 @@ button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-off
       answerPanel.querySelectorAll('.answer').forEach(b=>b.classList.remove('wrong','correct'));
       // Do not lock, delay or briefly reveal a second interval.
     }else{
-      answered.textContent=String(v);
+      answered.textContent=labelForDegree(v);
       answered.classList.add('reveal');
       answered.classList.remove('flash');
       setLocked(true);
@@ -438,12 +472,20 @@ button:focus-visible,select:focus-visible {outline:2px solid #9acbff;outline-off
   function setupAnswers(){
     ANSWERS.forEach(value=>{
       const button=document.createElement('button');
-      button.type='button';button.className='answer';button.textContent=String(value);
-      button.setAttribute('aria-label','Interval '+value);
+      button.type='button';button.className='answer';button.dataset.degree=String(value);
+      button.textContent=labelForDegree(value);
+      button.setAttribute('aria-label',(notation==='notes'?'Note ':'Interval ')+labelForDegree(value));
       button.addEventListener('click',()=>answer(value,button));
       answerPanel.appendChild(button);
     });
   }
+  document.querySelectorAll('[data-notation]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      notation=button.dataset.notation;
+      document.querySelectorAll('[data-notation]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
+      updateNotationLabels();
+    });
+  });
   document.querySelectorAll('[data-practice]').forEach(button=>{
     button.addEventListener('click',()=>{
       practice=button.dataset.practice;
